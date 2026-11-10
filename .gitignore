@@ -1,0 +1,50 @@
+# ---- Dependencies ----
+node_modules/
+
+# ---- Build output ----
+ui-dist/
+release/
+dist/
+out/
+*.tsbuildinfo
+
+# ---- Private notes (only for you, not for the repo) ----
+GUIDE.md
+
+# ---- Test data and generated files (large / private) ----
+test_videos/
+ocr-debug/
+excel_output/
+*.xlsx
+!scripts/**/*.xlsx
+graphify-out/
+
+# ---- Secrets and local settings ----
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+mega-session.bin
+
+# ---- Logs ----
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Editors and OS files ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Claude Code local files (the project memory CLAUDE.md IS kept) ----
+.claude/settings.local.json

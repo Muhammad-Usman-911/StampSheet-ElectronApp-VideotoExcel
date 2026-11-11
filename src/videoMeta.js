@@ -189,49 +189,48 @@ function fixDigits(s) { return s.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1').re
 
 const NUM = '[0-9OoIl|SB]';
 // Date part, e.g. "11-03-2026 Tue" -> '2026-11-03'. Rejects impossible years and dates that disagree with the weekday.
-// In Auto mode a readable weekday is required (otherwise 11-04 could be 11 April or 4 November).
+// The setting is only the usual order: see the comment inside.
 function parseDate(text, dateOrder = 'auto') {
+  // `dateOrder` is the order the cameras USUALLY use. The other order is still taken when the video proves it:
+  // the weekday only fits the other order, or the usual order is impossible (e.g. "23-10-2026" cannot be month 23).
+  // Only when both orders are possible and the weekday is unreadable does the setting decide (Auto: no guess).
   const t = text.replace(/\s+/g, ' ');
   const m = t.match(new RegExp(`(${NUM}{1,4})\\s*[-/.]\\s*(${NUM}{1,2})\\s*[-/.]\\s*(${NUM}{2,4})[\\s-]*([A-Za-z]{2,3})?`));
   if (!m) return null;
   const [a, b, c] = [m[1], m[2], m[3]].map((x) => parseInt(fixDigits(x), 10));
   const dow = m[4] ? DAYS.indexOf(m[4].slice(0, 2).toLowerCase()) : -1;
-  const cands = [];
-  if (m[1].length === 4) cands.push({ y: a, mo: b, d: c });
-  else {
-    if (dateOrder === 'auto' || dateOrder === 'dmy') cands.push({ y: c, mo: b, d: a });
-    if (dateOrder === 'auto' || dateOrder === 'mdy') cands.push({ y: c, mo: a, d: b });
-  }
   const thisYear = new Date().getFullYear();
-  // A thin leading '1' is often dropped by the OCR ("1-06-2026" instead of "11-06-2026"): also try the token with a '1' put back.
-  // Such a repaired date is only accepted when the weekday confirms it.
-  const repaired = [];
-  if (dow >= 0 && m[1].length !== 4) {
+  const dowOk = (x) => new Date(Date.UTC(x.y, x.mo - 1, x.d)).getUTCDay() === dow;
+  const inRange = (x) => x.y >= thisYear - 6 && x.y <= thisYear + 1 && x.mo >= 1 && x.mo <= 12 && x.d >= 1 && x.d <= 31
+    && new Date(Date.UTC(x.y, x.mo - 1, x.d)).getUTCDate() === x.d; // no 31 April
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (x) => `${x.y}-${pad(x.mo)}-${pad(x.d)}`;
+  if (m[1].length === 4) {
+    const x = { y: a, mo: b, d: c };
+    return inRange(x) && (dow < 0 || dowOk(x)) ? fmt(x) : null;
+  }
+  // candidates in order of preference: the usual order first
+  const orders = (n1, n2) => {
+    const md = { y: c, mo: n1, d: n2 }, dm = { y: c, mo: n2, d: n1 };
+    return dateOrder === 'dmy' ? [dm, md] : [md, dm];
+  };
+  const valid = orders(a, b).filter(inRange);
+  if (dow >= 0) {
+    const hit = valid.find(dowOk);
+    if (hit) return fmt(hit);
+    // A thin leading '1' is often dropped by the OCR ("1-06-2026" instead of "11-06-2026"): try the token with a '1'
+    // put back. Such a repaired date is only accepted when the weekday confirms it.
     const fix = (tok, n) => (tok.length === 1 ? parseInt('1' + fixDigits(tok), 10) : n);
     const a2 = fix(m[1], a), b2 = fix(m[2], b);
     if (a2 !== a || b2 !== b) {
-      if (dateOrder === 'auto' || dateOrder === 'dmy') repaired.push({ y: c, mo: b2, d: a2 });
-      if (dateOrder === 'auto' || dateOrder === 'mdy') repaired.push({ y: c, mo: a2, d: b2 });
+      const rep = orders(a2, b2).find((x) => inRange(x) && dowOk(x));
+      if (rep) return fmt(rep);
     }
+    return null; // weekday readable but no date fits it: a misread
   }
-  const dowOk = (x) => new Date(Date.UTC(x.y, x.mo - 1, x.d)).getUTCDay() === dow;
-  const inRange = (x) => x.y >= thisYear - 6 && x.y <= thisYear + 1 && x.mo >= 1 && x.mo <= 12 && x.d >= 1 && x.d <= 31;
-  const valid = cands.filter((x) => x.y >= thisYear - 6 && x.y <= thisYear + 1 && x.mo >= 1 && x.mo <= 12 && x.d >= 1 && x.d <= 31);
-  if (!valid.length || (dow >= 0 && !valid.some(dowOk))) {
-    const fixed = repaired.find((x) => inRange(x) && dowOk(x));
-    if (fixed) { const pd = (n) => String(n).padStart(2, '0'); return `${fixed.y}-${pd(fixed.mo)}-${pd(fixed.d)}`; }
-  }
-  if (!valid.length) return null;
-  let pick = valid[0];
-  if (dow >= 0) {
-    const hit = valid.find((x) => new Date(Date.UTC(x.y, x.mo - 1, x.d)).getUTCDay() === dow);
-    if (!hit) return null;
-    pick = hit;
-  } else if (valid.length > 1) {
-    return null; // day-first or month-first is ambiguous and the weekday is unreadable: do not guess
-  }
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pick.y}-${pad(pick.mo)}-${pad(pick.d)}`;
+  if (valid.length === 1) return fmt(valid[0]); // only one order is possible
+  if (valid.length > 1 && (dateOrder !== 'auto' || a === b)) return fmt(valid[0]);
+  return null; // ambiguous and the weekday is unreadable: do not guess
 }
 
 // Time part, e.g. "05:00:46" -> seconds since midnight
@@ -526,7 +525,7 @@ async function analyseVideo(file, opts = {}) {
 
 // `file` is a local path or a local bridge address (MEGA). `name` = file name shown in the sheet (needed for MEGA,
 // where the address does not contain the real name); `rowPath` = id the screen uses for this row.
-async function analyseWith(worker, file, { camera = 'Camera 1', dateOrder = 'mdy', endMode = 'length', name, rowPath } = {}) {
+async function analyseWith(worker, file, { camera = 'Camera 1', dateOrder = 'auto', endMode = 'length', name, rowPath } = {}) {
   const base = name || path.basename(file);
   const duration = Math.round(await getDurationSeconds(file));
   const st = await readStartStamp(worker, file, dateOrder, duration);

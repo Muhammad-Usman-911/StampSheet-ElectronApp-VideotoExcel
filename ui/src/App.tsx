@@ -21,7 +21,7 @@ import { HistoryDialog } from './History';
 import type { Entry, Settings, UpdateState, VideoRow } from './types';
 
 const SETTINGS_KEY = 'vmeta.settings';
-const DEFAULTS: Settings = { camera: 'Camera 1', useFolderCamera: true, dateOrder: 'mdy', endMode: 'length' };
+const DEFAULTS: Settings = { camera: 'Camera 1', useFolderCamera: true, dateOrder: 'auto', endMode: 'length' };
 const TAB_KEY = 'vmeta.sourceTab';
 function loadSettings(): Settings {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }; } catch { return DEFAULTS; }
@@ -98,9 +98,9 @@ function SettingsButton({ settings, onChange, version, update, onCheck }: { sett
           <Select value={settings.dateOrder} onValueChange={(v) => onChange({ ...settings, dateOrder: v as Settings['dateOrder'] })}>
             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="mdy">MM-DD-YYYY (default)</SelectItem>
-              <SelectItem value="dmy">DD-MM-YYYY</SelectItem>
-              <SelectItem value="auto">Auto (uses the weekday)</SelectItem>
+              <SelectItem value="auto">Auto (recommended)</SelectItem>
+              <SelectItem value="mdy">Mostly MM-DD-YYYY</SelectItem>
+              <SelectItem value="dmy">Mostly DD-MM-YYYY</SelectItem>
             </SelectContent>
           </Select>
         </div>

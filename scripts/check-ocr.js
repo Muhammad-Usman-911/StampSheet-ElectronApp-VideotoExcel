@@ -17,7 +17,7 @@ if (!files.length) { console.log(`No videos from ocr-truth.json found in ${dir}`
   const slot = limiter(parallel);
   const res = await Promise.all(files.map((f) => slot(async () => {
     const t = Date.now();
-    const r = await analyseVideo(path.join(dir, f), { dateOrder: 'mdy' });
+    const r = await analyseVideo(path.join(dir, f), { dateOrder: process.env.DATE || 'auto' });
     return { f, r, ms: Date.now() - t };
   })));
   const n = { ok: 0, wrong: 0, empty: 0 };

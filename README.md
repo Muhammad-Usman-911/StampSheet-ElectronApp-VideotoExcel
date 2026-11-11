@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">StampSheet</h1>
-<p> it is deployed on vercel : <a href="https://stampsheet.vercel.app/"> https://stampsheet.vercel.app/ </a> </p>
+<center><i> It is deployed on vercel : <a href="https://stampsheet.vercel.app/"> https://stampsheet.vercel.app/ </a> </i></center>
 <p align="center">
   <b>Turn CCTV footage into a clean Excel log, automatically.</b><br/>
   Reads the date and time burned into NVR/CCTV videos and writes name, date, start, end and duration to Excel.

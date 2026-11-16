@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { VIDEO_EXT } from './useVideos';
 import type { DriveStatus, Entry, MegaFolder, MegaResult, MegaStatus, Settings } from './types';
 import { DriveIcon } from './DriveIcon';
-import { PRIVACY_URL, TERMS_URL } from './links';
+import { PRIVACY_URL, TERMS_URL, requestAccessUrl } from './links';
 
 const spring = { type: 'spring', stiffness: 380, damping: 32 } as const;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -533,6 +533,10 @@ function DriveLoginDialog({ open, onOpenChange, account, onLoggedIn }: {
             Your Google password is typed only on Google&apos;s own page, never in this app. Access is read-only. By logging in you agree to
             the <a href={TERMS_URL} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">Terms of Service</a> and
             the <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">Privacy Policy</a>.
+          </p>
+          <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            Google Drive is in a testing phase: only approved Google accounts can log in. Not added yet?{' '}
+            <a href={requestAccessUrl(isEmail(email) ? email.trim() : undefined)} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">Request access</a>
           </p>
           <DialogFooter>
             {waiting

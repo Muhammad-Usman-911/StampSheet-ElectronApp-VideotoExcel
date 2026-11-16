@@ -192,7 +192,7 @@ ui/src/
   useVideos.ts          List state and reading
   components/ui/        shadcn/ui components
 scripts/                Test and debug tools, release check
-build/                  App icon (icon.svg / icon.png)
+build/                  Logo (logo.png) and app icon (icon.png, made by scripts/make-icons.py)
 .github/workflows/      Release pipeline
 ```
 

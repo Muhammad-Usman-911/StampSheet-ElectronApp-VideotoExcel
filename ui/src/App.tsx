@@ -18,6 +18,7 @@ import { VideoTable } from './VideoTable';
 import { useVideos } from './useVideos';
 import { DrivePanel, DropZone, MegaPanel, NamingInfoDialog } from './Sources';
 import { DriveIcon } from './DriveIcon';
+import logoMark from './assets/logo-mark.png';
 import { HistoryDialog } from './History';
 import type { Entry, Settings, UpdateState, VideoRow } from './types';
 
@@ -247,9 +248,7 @@ export default function App() {
     <div className="flex h-full flex-col">
       <header className="flex shrink-0 items-center justify-between border-b bg-card/70 px-6 py-3 backdrop-blur">
         <div className="flex items-center gap-3">
-          <motion.div initial={{ rotate: -12, scale: 0.8 }} animate={{ rotate: 0, scale: 1 }} transition={spring} className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/30">
-            <FileSpreadsheet className="size-5" />
-          </motion.div>
+          <motion.img src={logoMark} alt="" initial={{ rotate: -12, scale: 0.8 }} animate={{ rotate: 0, scale: 1 }} transition={spring} className="size-9 shrink-0 rounded-[10px] shadow-sm shadow-black/20" />
           <div>
             <h1 className="flex items-baseline gap-2 text-base font-semibold leading-tight">StampSheet {version && <span className="text-xs font-normal text-muted-foreground">v{version}</span>}</h1>
             <p className="text-xs text-muted-foreground">Reads the date and time printed on your camera videos and puts them in a sheet.</p>

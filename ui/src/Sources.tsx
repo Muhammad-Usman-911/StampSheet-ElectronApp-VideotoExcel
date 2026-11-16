@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   ArrowRight, ChevronRight, Cloud, FileVideo, Folder, FolderOpen, FolderPlus, FolderTree, HardDrive, Info, KeyRound,
-  Link2, Loader2, LogIn, LogOut, RefreshCw, ShieldCheck, UploadCloud, UserRound,
+  Link2, Loader2, LogIn, LogOut, RefreshCw, Repeat, ShieldCheck, UploadCloud, UserRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -396,28 +396,21 @@ function CloudBrowser({ api, open, onOpenChange, onNeedLogin, onAdd }: {
 
 // ---- Google Drive: connect once in the web browser, then choose folders ------------------------------
 
-const NO_DRIVE: DriveStatus = { configured: true, loggedIn: false, email: null, canRemember: false, connecting: false };
+const NO_DRIVE: DriveStatus = { configured: true, loggedIn: false, email: null, canRemember: false, connecting: false, lastEmail: '' };
+const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 
 export function DrivePanel({ compact, onAdd }: { compact: boolean; onAdd: (entries: Entry[], where: string) => void }) {
   const [account, setAccount] = useState<DriveStatus>(NO_DRIVE);
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
   const [browserOpen, setBrowserOpen] = useState(false);
 
   useEffect(() => { window.api.gdriveStatus().then(setAccount).catch(() => {}).finally(() => setChecking(false)); }, []);
 
-  const connect = async () => {
-    setError(null);
-    setAccount((a) => ({ ...a, connecting: true }));
-    const r = await window.api.gdriveLogin();
-    setAccount(r);
-    if (r.ok) setBrowserOpen(true);
-    else if (!r.canceled) setError(r.error || 'Could not connect Google Drive.');
-  };
-  const cancel = async () => setAccount(await window.api.gdriveCancel());
   const needLogin = useCallback(() => {
     setBrowserOpen(false);
-    setError('Your Google Drive connection has ended. Click "Connect Google Drive" again.');
+    setError('Your Google Drive connection has ended. Please log in again.');
     window.api.gdriveStatus().then(setAccount).catch(() => {});
   }, []);
   const logout = async () => setAccount(await window.api.gdriveLogout());
@@ -443,7 +436,7 @@ export function DrivePanel({ compact, onAdd }: { compact: boolean; onAdd: (entri
           title={compact ? 'Add videos from Google Drive' : 'Choose folders from your Google Drive'}
           text={
             <span className={cn('inline-flex items-center gap-1.5', !compact && 'flex-wrap justify-center')}>
-              <ShieldCheck className="size-3.5 shrink-0 text-success" /> Connected as <b className="font-medium text-foreground">{account.email}</b>
+              <ShieldCheck className="size-3.5 shrink-0 text-success" /> Logged in as <b className="font-medium text-foreground">{account.email}</b>
               {!compact && <span className="basis-full">Videos are <b className="font-medium text-foreground">not downloaded</b>: the app only reads the few pieces it needs.</span>}
             </span>
           }
@@ -451,37 +444,102 @@ export function DrivePanel({ compact, onAdd }: { compact: boolean; onAdd: (entri
           <Button size={compact ? 'sm' : 'default'} onClick={() => setBrowserOpen(true)} className={compact ? '' : 'shadow-sm shadow-primary/30'}>
             <FolderTree /> Choose Drive folder
           </Button>
+          <Button variant="outline" size={compact ? 'sm' : 'default'} onClick={() => setConnectOpen(true)}><Repeat /> Switch account</Button>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size={compact ? 'sm' : 'default'} onClick={logout}><LogOut /> Disconnect</Button>
+              <Button variant="ghost" size={compact ? 'sm' : 'default'} onClick={logout}><LogOut /> Log out</Button>
             </TooltipTrigger>
-            <TooltipContent>{account.canRemember ? 'The app remembers the connection until you disconnect.' : 'Disconnect Google Drive'}</TooltipContent>
+            <TooltipContent>{account.canRemember ? 'The app remembers this Google account until you log out.' : 'Log out of Google Drive'}</TooltipContent>
           </Tooltip>
         </SourceCard>
       ) : (
         <SourceCard
           compact={compact}
-          icon={account.connecting ? <Loader2 className="animate-spin" /> : <DriveIcon />}
-          title={account.connecting ? 'Finish signing in in your web browser' : 'Connect Google Drive'}
+          icon={<DriveIcon />}
+          title="Log in to Google Drive"
           text={
             <>
-              {account.connecting
-                ? 'Google\u2019s sign-in page is open in your web browser. Choose your account and allow access, then come back here.'
-                : compact ? 'Connect once, then choose folders of your drive'
-                  : 'Sign in with Google in your normal web browser (read-only access). The app remembers it, then you choose folders of your drive. Videos are not downloaded, and the app never sees your password.'}
+              {compact ? 'Log in once with your Google account, then choose folders of your drive'
+                : 'Log in once with your Google account email (read-only access). The app remembers it, then you choose folders of your drive. Videos are not downloaded, and the app never sees your password.'}
               {error && <span className={cn('block text-destructive', !compact && 'mt-2')}>{error}</span>}
             </>
           }
         >
-          {account.connecting ? (
-            <Button variant="outline" size={compact ? 'sm' : 'default'} onClick={cancel}>Cancel</Button>
-          ) : (
-            <Button size={compact ? 'sm' : 'default'} onClick={connect} className={compact ? '' : 'shadow-sm shadow-primary/30'}><LogIn /> Connect Google Drive</Button>
-          )}
+          <Button size={compact ? 'sm' : 'default'} onClick={() => setConnectOpen(true)} className={compact ? '' : 'shadow-sm shadow-primary/30'}><LogIn /> Log in to Google Drive</Button>
         </SourceCard>
       )}
+      <DriveLoginDialog key={connectOpen ? 'open' : 'closed'} open={connectOpen} onOpenChange={setConnectOpen} account={account}
+        onLoggedIn={(st) => { setAccount(st); setError(null); setConnectOpen(false); setBrowserOpen(true); }} />
       <CloudBrowser api={DRIVE_API} open={browserOpen} onOpenChange={setBrowserOpen} onNeedLogin={needLogin} onAdd={onAdd} />
     </>
+  );
+}
+
+/**
+ * In-app login box for a specific Google account. Google does not allow its password page inside apps, so after
+ * "Log in" Google's page opens in the web browser already on this account; the user only clicks "Allow" there.
+ */
+function DriveLoginDialog({ open, onOpenChange, account, onLoggedIn }: {
+  open: boolean; onOpenChange: (o: boolean) => void; account: DriveStatus; onLoggedIn: (s: DriveStatus) => void;
+}) {
+  const switching = account.loggedIn;
+  // fresh each time it opens (the parent changes `key`)
+  const [email, setEmail] = useState(() => (switching ? '' : account.lastEmail || ''));
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setWaiting(true); setError(null);
+    try {
+      const r = await window.api.gdriveLogin({ email: email.trim() });
+      if (r.ok) { onLoggedIn(r); return; }
+      if (!r.canceled) setError(r.error || 'Could not log in to Google Drive.');
+    } finally { setWaiting(false); }
+  };
+  const cancel = () => { window.api.gdriveCancel().catch(() => {}); };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && waiting) cancel(); onOpenChange(o); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><DriveIcon className="size-5" /> {switching ? 'Switch Google account' : 'Log in to Google Drive'}</DialogTitle>
+          <DialogDescription>
+            {switching && account.email ? <>Now logged in as <b className="font-medium text-foreground">{account.email}</b>. </> : null}
+            Type the Google account whose Drive has the videos. The app remembers it until you log out.
+          </DialogDescription>
+        </DialogHeader>
+        <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); if (!waiting) submit(); }}>
+          <div className="grid gap-1.5">
+            <Label htmlFor="gdrive-email">Google account email</Label>
+            <div className="relative">
+              <UserRound className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input id="gdrive-email" type="email" autoComplete="email" placeholder="name@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-9" disabled={waiting} autoFocus />
+            </div>
+          </div>
+          <AnimatePresence initial={false}>
+            {waiting && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="flex items-start gap-2.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2.5 text-sm">
+                <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
+                <span>Google&apos;s page is open in your web browser for <b className="font-medium">{email.trim()}</b>. Click <b className="font-medium">Allow</b> there, then come back here.</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {error && <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-sm text-destructive">{error}</motion.p>}
+          </AnimatePresence>
+          <p className="text-xs text-muted-foreground">Your Google password is typed only on Google&apos;s own page, never in this app. Access is read-only.</p>
+          <DialogFooter>
+            {waiting
+              ? <Button type="button" variant="outline" onClick={cancel}>Cancel</Button>
+              : <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>}
+            <Button type="submit" disabled={waiting || !isEmail(email)}>
+              {waiting ? <Loader2 className="animate-spin" /> : <LogIn />} {waiting ? 'Waiting for Google…' : switching ? 'Switch' : 'Log in'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   megaAddress: (text) => ipcRenderer.invoke('mega-address', text),
   megaVideos: (ids) => ipcRenderer.invoke('mega-videos', ids),
   gdriveStatus: () => ipcRenderer.invoke('gdrive-status'),
-  gdriveLogin: () => ipcRenderer.invoke('gdrive-login'),
+  gdriveLogin: (form) => ipcRenderer.invoke('gdrive-login', form),
   gdriveCancel: () => ipcRenderer.invoke('gdrive-cancel'),
   gdriveLogout: () => ipcRenderer.invoke('gdrive-logout'),
   gdriveFolder: (id) => ipcRenderer.invoke('gdrive-folder', id),

@@ -41,6 +41,8 @@ export interface DriveStatus {
   canRemember: boolean;
   /** waiting for the user to finish signing in in the web browser */
   connecting: boolean;
+  /** email of the connected (or last connected) Google account, to fill the login box */
+  lastEmail: string;
 }
 
 export type MegaResult<T> = ({ ok: true } & T) | { ok: false; error: string; needLogin?: boolean };
@@ -121,7 +123,7 @@ declare global {
       megaAddress: (text: string) => Promise<MegaResult<{ id: string }>>;
       megaVideos: (ids: string[]) => Promise<MegaResult<{ entries: Entry[] }>>;
       gdriveStatus: () => Promise<DriveStatus>;
-      gdriveLogin: () => Promise<DriveStatus & { ok: boolean; canceled?: boolean; error?: string }>;
+      gdriveLogin: (form: { email: string }) => Promise<DriveStatus & { ok: boolean; canceled?: boolean; error?: string }>;
       gdriveCancel: () => Promise<DriveStatus>;
       gdriveLogout: () => Promise<DriveStatus>;
       gdriveFolder: (id: string | null) => Promise<MegaResult<MegaFolder>>;

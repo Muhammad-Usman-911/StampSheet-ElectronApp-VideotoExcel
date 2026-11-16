@@ -60,8 +60,10 @@ function getConfig() {
 function setStore(s) { store = s; }
 function setOpener(fn) { openBrowser = fn; }
 
+let lastEmail = '';
 function status() {
   return {
+    lastEmail: (session && session.email) || lastEmail,
     configured: !!getConfig(),
     loggedIn: !!session, email: session ? session.email : null,
     canRemember: !!(store && store.canRemember),
@@ -74,6 +76,7 @@ function restore() {
   if (!session && store) {
     const saved = store.load();
     if (saved && saved.refreshToken) session = { refreshToken: saved.refreshToken, email: saved.email || 'Google account' };
+    if (saved && saved.email) lastEmail = saved.email;
   }
   return Promise.resolve(status());
 }
@@ -120,10 +123,19 @@ const PAGE = (title, text) => `<!doctype html><meta charset="utf-8"><title>Stamp
 <body style="font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:90vh;margin:0;background:#fafafa;color:#111">
 <div style="text-align:center;max-width:28rem;padding:2rem"><h2>${title}</h2><p style="color:#555">${text}</p></div></body>`;
 
-/** Opens Google's sign-in page in the default browser and waits (up to 5 minutes) until the user is back. */
-async function login() {
+const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
+const revoke = (t) => fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t)}`, { method: 'POST' }).catch(() => {});
+
+/**
+ * Logs in to ONE specific Google account: the user types its email in the app, Google's page opens in the default
+ * browser already on that account (only "Allow" is clicked there), and the app waits (up to 5 minutes).
+ * If another account signs in anyway, its access is withdrawn again and the current connection stays as it was.
+ */
+async function login({ email: wanted } = {}) {
   const cfg = getConfig();
   if (!cfg) return { ok: false, error: 'Google Drive is not set up in this copy of the app (no Google Client ID, see README).', ...status() };
+  const want = String(wanted || '').trim().toLowerCase();
+  if (!isEmail(want)) return { ok: false, error: 'Type the email of the Google account (for example name@gmail.com).', ...status() };
   if (pending) pending.cancel();
   const verifier = b64url(crypto.randomBytes(32));
   const challenge = b64url(crypto.createHash('sha256').update(verifier).digest());
@@ -158,20 +170,32 @@ async function login() {
     auth.search = new URLSearchParams({
       client_id: cfg.clientId, redirect_uri: redirect, response_type: 'code', scope: SCOPE,
       code_challenge: challenge, code_challenge_method: 'S256', state,
-      access_type: 'offline', prompt: 'consent select_account',
+      access_type: 'offline', prompt: 'consent', login_hint: want,
     }).toString();
     openBrowser(auth.toString());
     const code = await done;
     const j = await tokenRequest({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri: redirect });
     if (!j.refresh_token) throw new Error('Google did not give a lasting login. Try again.');
     if (!String(j.scope || '').split(' ').includes(SCOPE)) throw new Error('Please tick "See and download all your Google Drive files" in the Google window, so the videos can be read.');
-    session = { refreshToken: j.refresh_token, email: 'Google account' };
-    access = { token: j.access_token, expiresAt: Date.now() + (j.expires_in || 3600) * 1000 - 60_000 };
+    // which account signed in? (asked with the NEW token; the current connection is kept until this is checked)
+    let got = '';
     try {
-      const about = await api('/about', { fields: 'user(emailAddress,displayName)' });
-      session.email = (about.user && (about.user.emailAddress || about.user.displayName)) || session.email;
-    } catch { /* keep the default name */ }
+      const r = await fetch(`${API}/about?fields=user(emailAddress)`, { headers: { Authorization: `Bearer ${j.access_token}` } });
+      got = String(((await r.json()).user || {}).emailAddress || '').toLowerCase();
+    } catch { /* checked below */ }
+    if (got !== want) {
+      await revoke(j.refresh_token);
+      throw new Error(got
+        ? `Google signed in ${got}, not ${want}. Click "Log in" again and choose ${want} on the Google page.`
+        : 'Could not check which Google account signed in. Check the internet connection and try again.');
+    }
+    const old = session;
+    session = { refreshToken: j.refresh_token, email: got };
+    access = { token: j.access_token, expiresAt: Date.now() + (j.expires_in || 3600) * 1000 - 60_000 };
+    rootId = null; folderCache.clear();   // the folder list belongs to the account
+    if (old && old.refreshToken !== session.refreshToken) revoke(old.refreshToken);   // switched account
     if (store && store.canRemember) store.save(session);
+    lastEmail = got;
     return { ok: true, ...status() };
   } catch (err) {
     return { ok: false, canceled: !!err.canceled, error: String(err.message || err), ...status() };
@@ -189,9 +213,8 @@ async function logout(clearSaved = true) {
   const s = session;
   session = null; access = null; rootId = null; folderCache.clear();
   if (clearSaved && store) store.clear();
-  if (s && clearSaved) {
-    try { await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(s.refreshToken)}`, { method: 'POST' }); } catch { /* offline */ }
-  }
+  if (s) lastEmail = s.email;
+  if (s && clearSaved) await revoke(s.refreshToken);
   return status();
 }
 

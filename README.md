@@ -68,9 +68,12 @@ The app checks for updates automatically. When a new version is ready, a **Resta
 1. **Add videos**
    - **From this computer:** drop videos or folders anywhere on the window, or use *Choose videos* / *Choose folder*.
    - **From MEGA:** *Log in to MEGA* (once; the login is remembered), then *Choose MEGA folder* and *Add*.
-   - **From Google Drive:** *Connect Google Drive* opens Google's sign-in page in your web browser. Choose the account
-     and allow access, then come back: *Choose Drive folder* and *Add* (or paste a `drive.google.com/drive/folders/…`
-     address). The connection is remembered until you click *Disconnect*.
+   - **From Google Drive:** *Log in to Google Drive*, type the **Google account email** whose Drive has the videos and
+     click *Log in*. Google's page opens in your web browser already on that account: click *Allow* and come back.
+     The app only accepts that account (if another one signs in, it is refused). Then *Choose Drive folder* and *Add*
+     (or paste a `drive.google.com/drive/folders/…` address). *Switch account* changes to another Google account; the
+     login is remembered until *Log out*.
+     (Google does not allow its password page inside other apps, so the password is only ever typed on Google's page.)
 2. **Check:** values can be edited in place. Orange rows need a look (the note explains why). Click the
    warning icon once a row is checked. *Needs check* filters to those rows.
 3. **Export:** *Export to new Excel* or *Append to existing Excel*.
@@ -100,7 +103,7 @@ Not treated as camera folders: `Webcam5`, `Scam 1`, `Cameras`, `Footage 2026`.
 | History | `history.jsonl` in the app data folder of this computer (`%APPDATA%\StampSheet` on Windows, `~/.config/StampSheet` on Linux) |
 | MEGA login | Only the session token, encrypted by the operating system (Windows Credential Manager / Linux keyring). The password is never stored. *Log out* deletes it. |
 | Settings | Local app storage |
-| Google Drive connection | Only the refresh token (read-only Drive access) and the email, encrypted by the operating system like the MEGA login (`gdrive-session.bin`). The app never sees the Google password. *Disconnect* withdraws the token at Google and deletes it. |
+| Google Drive connection | Only the refresh token (read-only Drive access) and the email, encrypted by the operating system like the MEGA login (`gdrive-session.bin`). The app never sees the Google password. *Log out* withdraws the token at Google and deletes it. |
 | Videos | Never uploaded. MEGA and Google Drive videos are streamed piece by piece and never written to disk. |
 
 ---
@@ -229,7 +232,9 @@ local address (`http://127.0.0.1:<port>/<secret>/<id>`); the bridge fetches only
 512 KB blocks, decrypts them in memory (AES-128-CTR allows decrypting any block on its own) and caches recent blocks.
 Typical traffic: about 6 MB per 1 GB video.
 
-**Google Drive without downloading** (`src/driveAccount.js`). *Connect* starts a one-time local web server on
+**Google Drive without downloading** (`src/driveAccount.js`). The login box sends the typed email as `login_hint`, and
+after sign-in the app asks Drive which account it got; another account is refused (its token is withdrawn) and the
+current login stays. *Log in* starts a one-time local web server on
 `127.0.0.1:<random port>` and opens Google's sign-in page in the default browser (OAuth 2.0 for installed apps, PKCE,
 scope `drive.readonly`). Google sends the browser back to that local address with a code, which is exchanged for an
 access token (1 hour, refreshed automatically) and a refresh token (kept encrypted). Folders are listed one at a time

@@ -80,7 +80,7 @@ ipcMain.handle('mega-videos', megaCall(async (ids) => ({ entries: await listMega
 
 // ---- Google Drive (connect once in the web browser, then pick folders of the drive) ----
 ipcMain.handle('gdrive-status', () => driveAccount.restore());
-ipcMain.handle('gdrive-login', () => driveAccount.login());
+ipcMain.handle('gdrive-login', (_e, form) => driveAccount.login(form || {}));
 ipcMain.handle('gdrive-cancel', () => driveAccount.cancelLogin());
 ipcMain.handle('gdrive-logout', () => driveAccount.logout(true));
 ipcMain.handle('gdrive-folder', megaCall((id) => driveAccount.listFolder(id)));

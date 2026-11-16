@@ -2,7 +2,7 @@
   "name": "stampsheet",
   "productName": "StampSheet",
   "version": "1.0.0",
-  "description": "Reads the date and time burned into CCTV/NVR videos (on this computer or in MEGA) and logs name, date, start/end time and duration into Excel.",
+  "description": "Reads the date and time burned into CCTV/NVR videos (on this computer, in MEGA or in Google Drive) and logs name, date, start/end time and duration into Excel.",
   "author": {
     "name": "StampSheet"
   },
@@ -91,6 +91,7 @@
       "src/**",
       "ui-dist/**",
       "package.json",
+      "google-oauth.json",
       "!node_modules/ffprobe-static/bin/**",
       "node_modules/ffprobe-static/bin/${platform}/${arch}/**",
       "!**/*.{md,map,ts}",

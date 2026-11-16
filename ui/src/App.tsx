@@ -16,7 +16,10 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { VideoTable } from './VideoTable';
 import { useVideos } from './useVideos';
-import { DropZone, MegaPanel, NamingInfoDialog } from './Sources';
+import { DrivePanel, DropZone, MegaPanel, NamingInfoDialog } from './Sources';
+import { DriveIcon } from './DriveIcon';
+import logoMark from './assets/logo-mark.png';
+import { PRIVACY_URL, TERMS_URL } from './links';
 import { HistoryDialog } from './History';
 import type { Entry, Settings, UpdateState, VideoRow } from './types';
 
@@ -121,6 +124,10 @@ function SettingsButton({ settings, onChange, version, update, onCheck }: { sett
             {update.state === 'checking' ? <Loader2 className="animate-spin" /> : <RefreshCw />} Check for updates
           </Button>
         </div>
+        <div className="flex gap-4 text-xs">
+          <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground hover:underline">Privacy Policy</a>
+          <a href={TERMS_URL} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground hover:underline">Terms of Service</a>
+        </div>
       </PopoverContent>
     </Popover>
   );
@@ -169,7 +176,7 @@ export default function App() {
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* storage unavailable */ } }, [settings]);
 
-  const [tab, setTab] = useState<'local' | 'mega'>(() => { try { return localStorage.getItem(TAB_KEY) === 'mega' ? 'mega' : 'local'; } catch { return 'local'; } });
+  const [tab, setTab] = useState<'local' | 'mega' | 'gdrive'>(() => { try { const t = localStorage.getItem(TAB_KEY); return t === 'mega' || t === 'gdrive' ? t : 'local'; } catch { return 'local'; } });
   useEffect(() => { try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable */ } }, [tab]);
 
   const add = useCallback((entries: Entry[], where = 'the selection') => {
@@ -246,9 +253,7 @@ export default function App() {
     <div className="flex h-full flex-col">
       <header className="flex shrink-0 items-center justify-between border-b bg-card/70 px-6 py-3 backdrop-blur">
         <div className="flex items-center gap-3">
-          <motion.div initial={{ rotate: -12, scale: 0.8 }} animate={{ rotate: 0, scale: 1 }} transition={spring} className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/30">
-            <FileSpreadsheet className="size-5" />
-          </motion.div>
+          <motion.img src={logoMark} alt="" initial={{ rotate: -12, scale: 0.8 }} animate={{ rotate: 0, scale: 1 }} transition={spring} className="size-9 shrink-0 rounded-[10px] shadow-sm shadow-black/20" />
           <div>
             <h1 className="flex items-baseline gap-2 text-base font-semibold leading-tight">StampSheet {version && <span className="text-xs font-normal text-muted-foreground">v{version}</span>}</h1>
             <p className="text-xs text-muted-foreground">Reads the date and time printed on your camera videos and puts them in a sheet.</p>
@@ -267,15 +272,17 @@ export default function App() {
 
       <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-6">
         <div className={cn('flex shrink-0 flex-col gap-2', !hasItems && 'min-h-[300px] flex-1')}>
-          <Tabs value={tab} onValueChange={(v) => setTab(v as 'local' | 'mega')}>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as 'local' | 'mega' | 'gdrive')}>
             <TabsList>
               <TabsTrigger value="local" className="px-3"><HardDrive /> From this computer</TabsTrigger>
               <TabsTrigger value="mega" className="px-3"><Cloud /> From MEGA</TabsTrigger>
+              <TabsTrigger value="gdrive" className="px-3"><DriveIcon /> From Google Drive</TabsTrigger>
             </TabsList>
           </Tabs>
           {tab === 'local'
             ? <DropZone compact={hasItems} dragging={dragging} onFiles={browse} onFolder={browseFolder} />
-            : <MegaPanel compact={hasItems} onAdd={add} />}
+            : tab === 'mega' ? <MegaPanel compact={hasItems} onAdd={add} />
+              : <DrivePanel compact={hasItems} onAdd={add} />}
         </div>
 
         <AnimatePresence>

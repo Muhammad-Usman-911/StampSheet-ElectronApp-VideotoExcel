@@ -3,17 +3,18 @@ const fs = require('fs');
 const path = require('path');
 const { analyseVideo, closeWorker, warmUp, limiter, CPUS } = require('./src/videoMeta');
 const { saveRows } = require('./src/excel');
-const { expandLocal, listMegaFolders, getMegaFile, megaSource, VIDEO_EXT } = require('./src/sources');
+const { expandLocal, listMegaFolders, getMegaFile, megaSource, listDriveFolders, getDriveFile, VIDEO_EXT } = require('./src/sources');
 const bridge = require('./src/streamBridge');
 const megaAccount = require('./src/megaAccount');
+const driveAccount = require('./src/driveAccount');
 const history = require('./src/history');
 const updates = require('./src/updates');
 
 // The MEGA login is remembered: only the session (never the password), encrypted by the operating system
 // (Windows/macOS keychain, Linux keyring). Without real encryption (Linux without a keyring) it is not saved,
 // and the user logs in again after restarting the app.
-function sessionStore() {
-  const file = path.join(app.getPath('userData'), 'mega-session.bin');
+function sessionStore(name = 'mega-session.bin') {
+  const file = path.join(app.getPath('userData'), name);
   const backend = typeof safeStorage.getSelectedStorageBackend === 'function' ? safeStorage.getSelectedStorageBackend() : '';
   const canRemember = safeStorage.isEncryptionAvailable() && backend !== 'basic_text';
   return {
@@ -41,6 +42,14 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.setMenuBarVisibility(false);
+  // links (Privacy Policy, Terms of Service) open in the normal web browser, never inside the app
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (/^https:\/\//.test(url)) { e.preventDefault(); shell.openExternal(url); }
+  });
   win.once('ready-to-show', () => win.show());
   if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL);
   else win.loadFile(path.join(__dirname, 'ui-dist', 'index.html'));
@@ -77,9 +86,21 @@ ipcMain.handle('mega-folder', megaCall((id) => megaAccount.listFolder(id)));
 ipcMain.handle('mega-address', megaCall(async (text) => ({ id: await megaAccount.folderFromAddress(text) })));
 ipcMain.handle('mega-videos', megaCall(async (ids) => ({ entries: await listMegaFolders(ids) })));
 
+// ---- Google Drive (connect once in the web browser, then pick folders of the drive) ----
+ipcMain.handle('gdrive-status', () => driveAccount.restore());
+ipcMain.handle('gdrive-login', (_e, form) => driveAccount.login(form || {}));
+ipcMain.handle('gdrive-cancel', () => driveAccount.cancelLogin());
+ipcMain.handle('gdrive-logout', () => driveAccount.logout(true));
+ipcMain.handle('gdrive-folder', megaCall((id) => driveAccount.listFolder(id)));
+ipcMain.handle('gdrive-address', megaCall(async (text) => ({ id: await driveAccount.folderFromAddress(text) })));
+ipcMain.handle('gdrive-videos', megaCall(async (ids) => ({ entries: await listDriveFolders(ids) })));
+
 ipcMain.handle('analyse', (e, id, opts) => analyseSlot(async () => {
   if (!e.sender.isDestroyed()) e.sender.send('analyse-started', id);
   const isMega = id.startsWith('mega:');
+  const isDrive = id.startsWith('gdrive:');
+  const source = isMega ? 'mega' : isDrive ? 'gdrive' : 'local';
+  const where = isMega ? 'MEGA' : 'Google Drive';
   let src;
   try {
     let file = id;
@@ -88,20 +109,25 @@ ipcMain.handle('analyse', (e, id, opts) => analyseSlot(async () => {
       if (!node) throw new Error('This MEGA video is no longer available. Open the link again.');
       src = megaSource(node);
       file = await bridge.urlFor(id, src);   // ffmpeg reads only the pieces it needs, nothing is saved to disk
+    } else if (isDrive) {
+      const f = getDriveFile(id);
+      if (!f) throw new Error('This Google Drive video is no longer available. Choose the folder again.');
+      src = driveAccount.driveSource(f);
+      file = await bridge.urlFor(id, src);
     }
     const t0 = Date.now();
     const row = await analyseVideo(file, { ...opts, rowPath: id });
-    history.add({ type: 'read', source: isMega ? 'mega' : 'local', folderPath: opts.folderPath || '', ms: Date.now() - t0, row });
+    history.add({ type: 'read', source, folderPath: opts.folderPath || '', ms: Date.now() - t0, row });
     return { ok: true, row };
   } catch (err) {
     const msg = String(err.message || err);
-    // a MEGA problem (limit, network) is more useful to the user than ffmpeg's own message
-    const error = src && src.lastError ? `Could not read this video from MEGA: ${src.lastError.message}` : msg;
-    history.add({ type: 'read', source: isMega ? 'mega' : 'local', folderPath: opts.folderPath || '', failed: true,
+    // a MEGA / Drive problem (limit, network) is more useful to the user than ffmpeg's own message
+    const error = src && src.lastError ? `Could not read this video from ${where}: ${src.lastError.message}` : msg;
+    history.add({ type: 'read', source, folderPath: opts.folderPath || '', failed: true,
       row: { path: id, video_name: `${opts.camera || 'Camera 1'}_${opts.name || path.basename(id)}`, date: '', start_time: '', end_time: '', duration: '', usefulness: 'Yes', warning: error } });
     return { ok: false, error };
   } finally {
-    if (isMega) bridge.forget(id);
+    if (isMega || isDrive) bridge.forget(id);
   }
 }));
 
@@ -141,6 +167,8 @@ ipcMain.handle('show-in-folder', (_e, filePath) => { shell.showItemInFolder(file
 
 app.whenReady().then(() => {
   megaAccount.setStore(sessionStore());
+  driveAccount.setStore(sessionStore('gdrive-session.bin'));
+  driveAccount.setOpener((url) => shell.openExternal(url));
   history.init(path.join(app.getPath('userData'), 'history.jsonl'));
   createWindow();
   updates.start(() => win);   // only in the installed app: checks GitHub for a new version

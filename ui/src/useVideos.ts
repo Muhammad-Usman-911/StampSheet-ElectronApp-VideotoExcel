@@ -68,7 +68,7 @@ export function useVideos() {
       id: String(++nextId),
       status: 'done',
       fileName: row.video_name.replace(/^.*?_/, ''),
-      source: row.path.startsWith('mega:') ? 'mega' : 'local',
+      source: row.path.startsWith('mega:') ? 'mega' : row.path.startsWith('gdrive:') ? 'gdrive' : 'local',
       cameraFolder: null,
       folderPath,
       row: { ...row },

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, CheckCircle2, Cloud, FileSpreadsheet, FolderOpen, HardDrive, History as HistoryIcon, ListPlus, Monitor, Search, Trash2, XCircle } from 'lucide-react';
+import { DriveIcon } from './DriveIcon';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -171,7 +172,7 @@ function ReadRow({ e, onLoad, onRemove }: { e: Read; onLoad: () => void; onRemov
       </Tooltip>
       <div className="min-w-0">
         <p className="flex items-center gap-1.5 text-sm">
-          {e.source === 'mega' ? <Cloud className="size-3.5 shrink-0 text-muted-foreground" /> : <HardDrive className="size-3.5 shrink-0 text-muted-foreground" />}
+          {e.source === 'mega' ? <Cloud className="size-3.5 shrink-0 text-muted-foreground" /> : e.source === 'gdrive' ? <DriveIcon className="size-3.5 shrink-0" /> : <HardDrive className="size-3.5 shrink-0 text-muted-foreground" />}
           <span className="truncate font-medium" title={r.video_name}>{r.video_name}</span>
         </p>
         <p className="truncate text-xs tabular-nums text-muted-foreground" title={e.folderPath}>

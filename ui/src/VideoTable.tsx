@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { AlertTriangle, CheckCircle2, Cloud, Clock3, Folder, HardDrive, Loader2, PartyPopper, Trash2 } from 'lucide-react';
+import { DriveIcon } from './DriveIcon';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Item, VideoRow } from './types';
@@ -46,10 +47,9 @@ function StatusIcon({ item, onMarkChecked }: { item: Item; onMarkChecked: () => 
   );
 }
 
-/** Small icon before the name: where the video is (computer / MEGA) and where its camera name came from. */
+/** Small icon before the name: where the video is (computer / MEGA / Google Drive) and where its camera name came from. */
 function SourceIcon({ item }: { item: Item }) {
-  const mega = item.source === 'mega';
-  const Icon = item.cameraFolder ? Folder : mega ? Cloud : HardDrive;
+  const Icon = item.cameraFolder ? Folder : item.source === 'mega' ? Cloud : item.source === 'gdrive' ? DriveIcon : HardDrive;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -58,7 +58,7 @@ function SourceIcon({ item }: { item: Item }) {
         </span>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-sm">
-        <p className="font-medium">{mega ? 'Video on MEGA (read online, not downloaded)' : 'Video on this computer'}</p>
+        <p className="font-medium">{item.source === 'mega' ? 'Video on MEGA (read online, not downloaded)' : item.source === 'gdrive' ? 'Video on Google Drive (read online, not downloaded)' : 'Video on this computer'}</p>
         <p className="mt-1 opacity-80">{item.cameraFolder ? <>Camera name taken from folder “{item.cameraFolder}”.</> : 'No camera folder found: the default camera name was used.'}</p>
         {item.folderPath && <p className="mt-1 break-all opacity-60">{item.folderPath}</p>}
       </TooltipContent>

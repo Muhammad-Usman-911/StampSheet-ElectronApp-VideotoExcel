@@ -32,18 +32,32 @@ export interface MegaStatus {
   foldersError?: string | null;
 }
 
+/** Google Drive connection state (src/driveAccount.js). */
+export interface DriveStatus {
+  /** false when this copy of the app has no Google Client ID (see README, "Google Drive setup"). */
+  configured: boolean;
+  loggedIn: boolean;
+  email: string | null;
+  canRemember: boolean;
+  /** waiting for the user to finish signing in in the web browser */
+  connecting: boolean;
+  /** email of the connected (or last connected) Google account, to fill the login box */
+  lastEmail: string;
+}
+
 export type MegaResult<T> = ({ ok: true } & T) | { ok: false; error: string; needLogin?: boolean };
 
-export interface MegaFolderInfo { id: string; name: string; videos: number; folders: number }
+/** `null` counts = not known without a slow scan (Google Drive). */
+export interface MegaFolderInfo { id: string; name: string; videos: number | null; folders: number | null }
 
-/** One folder in the MEGA folder browser. */
+/** One folder in the cloud folder browser (MEGA or Google Drive). */
 export interface MegaFolder {
   id: string | null;
   path: { id: string; name: string }[];
   folders: MegaFolderInfo[];
   /** videos directly in this folder / in this folder and all sub-folders */
   videosHere: number;
-  videosTotal: number;
+  videosTotal: number | null;
 }
 
 /** One thing the app did on this device (src/history.js). */
@@ -66,11 +80,11 @@ export type UpdateState =
   | { state: 'error'; error: string };
 
 export type Status = 'queued' | 'reading' | 'done';
-export type Source = 'local' | 'mega';
+export type Source = 'local' | 'mega' | 'gdrive';
 
 /** A video found by the main process (picked files, a folder, dropped items or a MEGA link). See src/sources.js. */
 export interface Entry {
-  /** Local file path, or "mega:<id>" for a MEGA video. */
+  /** Local file path, "mega:<id>" for a MEGA video or "gdrive:<id>" for a Google Drive video. */
   id: string;
   name: string;
   source: Source;
@@ -108,6 +122,13 @@ declare global {
       megaFolder: (id: string | null) => Promise<MegaResult<MegaFolder>>;
       megaAddress: (text: string) => Promise<MegaResult<{ id: string }>>;
       megaVideos: (ids: string[]) => Promise<MegaResult<{ entries: Entry[] }>>;
+      gdriveStatus: () => Promise<DriveStatus>;
+      gdriveLogin: (form: { email: string }) => Promise<DriveStatus & { ok: boolean; canceled?: boolean; error?: string }>;
+      gdriveCancel: () => Promise<DriveStatus>;
+      gdriveLogout: () => Promise<DriveStatus>;
+      gdriveFolder: (id: string | null) => Promise<MegaResult<MegaFolder>>;
+      gdriveAddress: (text: string) => Promise<MegaResult<{ id: string }>>;
+      gdriveVideos: (ids: string[]) => Promise<MegaResult<{ entries: Entry[] }>>;
       analyse: (id: string, opts: Settings & { name: string; folderPath: string }) => Promise<{ ok: true; row: VideoRow } | { ok: false; error: string }>;
       exportExcel: (rows: VideoRow[], mode: 'new' | 'append') => Promise<{ ok: boolean; filePath?: string; canceled?: boolean; error?: string }>;
       showInFolder: (filePath: string) => Promise<void>;

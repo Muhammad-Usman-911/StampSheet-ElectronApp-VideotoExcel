@@ -29,6 +29,18 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Google Drive sign-in: repository secrets GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET (OAuth client of type
+      # "Desktop app"). Without them the app is built without Google Drive (the tab says it is not set up).
+      - name: Google Drive settings (optional)
+        shell: bash
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          if [ -n "$GOOGLE_CLIENT_ID" ]; then
+            node -e "require('fs').writeFileSync('google-oauth.json', JSON.stringify({ clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET }))"
+          fi
+
       - name: Type check
         run: npm run typecheck
 

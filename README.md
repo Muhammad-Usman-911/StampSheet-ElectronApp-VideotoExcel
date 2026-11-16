@@ -144,7 +144,9 @@ not set up.
 2. **APIs & Services → Library →** enable **Google Drive API**.
 3. **APIs & Services → OAuth consent screen:** app name *StampSheet*, user type *External*, add the scope
    `https://www.googleapis.com/auth/drive.readonly`. While the app is in *Testing*, add the client's Google accounts
-   under **Test users** (up to 100).
+   under **Test users** (up to 100). The privacy policy and terms links are pages of the ocrXtrack website:
+   `https://<site>/privacy` and `https://<site>/terms` (the app links to them from Settings and the Google Drive login
+   box; set the site address once in `ui/src/links.ts`).
 4. **APIs & Services → Credentials → Create credentials → OAuth client ID →** application type **Desktop app**.
    Click **Download JSON**.
 5. Save that file as **`google-oauth.json`** in the project folder (next to `package.json`). It is git-ignored and is

@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { VIDEO_EXT } from './useVideos';
 import type { DriveStatus, Entry, MegaFolder, MegaResult, MegaStatus, Settings } from './types';
 import { DriveIcon } from './DriveIcon';
+import { PRIVACY_URL, TERMS_URL } from './links';
 
 const spring = { type: 'spring', stiffness: 380, damping: 32 } as const;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
@@ -528,7 +529,11 @@ function DriveLoginDialog({ open, onOpenChange, account, onLoggedIn }: {
           <AnimatePresence>
             {error && <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-sm text-destructive">{error}</motion.p>}
           </AnimatePresence>
-          <p className="text-xs text-muted-foreground">Your Google password is typed only on Google&apos;s own page, never in this app. Access is read-only.</p>
+          <p className="text-xs text-muted-foreground">
+            Your Google password is typed only on Google&apos;s own page, never in this app. Access is read-only. By logging in you agree to
+            the <a href={TERMS_URL} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">Terms of Service</a> and
+            the <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">Privacy Policy</a>.
+          </p>
           <DialogFooter>
             {waiting
               ? <Button type="button" variant="outline" onClick={cancel}>Cancel</Button>

@@ -19,6 +19,7 @@ import { useVideos } from './useVideos';
 import { DrivePanel, DropZone, MegaPanel, NamingInfoDialog } from './Sources';
 import { DriveIcon } from './DriveIcon';
 import logoMark from './assets/logo-mark.png';
+import { PRIVACY_URL, TERMS_URL } from './links';
 import { HistoryDialog } from './History';
 import type { Entry, Settings, UpdateState, VideoRow } from './types';
 
@@ -122,6 +123,10 @@ function SettingsButton({ settings, onChange, version, update, onCheck }: { sett
           <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onCheck} disabled={update.state === 'checking' || update.state === 'downloading' || update.state === 'dev'}>
             {update.state === 'checking' ? <Loader2 className="animate-spin" /> : <RefreshCw />} Check for updates
           </Button>
+        </div>
+        <div className="flex gap-4 text-xs">
+          <a href={PRIVACY_URL} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground hover:underline">Privacy Policy</a>
+          <a href={TERMS_URL} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground hover:underline">Terms of Service</a>
         </div>
       </PopoverContent>
     </Popover>

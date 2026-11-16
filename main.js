@@ -42,6 +42,14 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.setMenuBarVisibility(false);
+  // links (Privacy Policy, Terms of Service) open in the normal web browser, never inside the app
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (/^https:\/\//.test(url)) { e.preventDefault(); shell.openExternal(url); }
+  });
   win.once('ready-to-show', () => win.show());
   if (process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL);
   else win.loadFile(path.join(__dirname, 'ui-dist', 'index.html'));

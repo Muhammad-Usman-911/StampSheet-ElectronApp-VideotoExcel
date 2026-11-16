@@ -10,6 +10,13 @@ contextBridge.exposeInMainWorld('api', {
   megaFolder: (id) => ipcRenderer.invoke('mega-folder', id),
   megaAddress: (text) => ipcRenderer.invoke('mega-address', text),
   megaVideos: (ids) => ipcRenderer.invoke('mega-videos', ids),
+  gdriveStatus: () => ipcRenderer.invoke('gdrive-status'),
+  gdriveLogin: () => ipcRenderer.invoke('gdrive-login'),
+  gdriveCancel: () => ipcRenderer.invoke('gdrive-cancel'),
+  gdriveLogout: () => ipcRenderer.invoke('gdrive-logout'),
+  gdriveFolder: (id) => ipcRenderer.invoke('gdrive-folder', id),
+  gdriveAddress: (text) => ipcRenderer.invoke('gdrive-address', text),
+  gdriveVideos: (ids) => ipcRenderer.invoke('gdrive-videos', ids),
   analyse: (id, opts) => ipcRenderer.invoke('analyse', id, opts),
   exportExcel: (rows, mode) => ipcRenderer.invoke('export-excel', rows, mode),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
@@ -25,7 +32,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('update-status', h);
     return () => ipcRenderer.removeListener('update-status', h);
   },
-  // called with the video id (file path or mega:...) when a queued video actually starts being read
+  // called with the video id (file path, mega:... or gdrive:...) when a queued video actually starts being read
   onStarted: (cb) => {
     const h = (_e, file) => cb(file);
     ipcRenderer.on('analyse-started', h);

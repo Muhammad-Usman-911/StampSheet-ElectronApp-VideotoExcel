@@ -27,6 +27,8 @@ graphify-out/
 *.p12
 *.pfx
 mega-session.bin
+gdrive-session.bin
+google-oauth.json
 
 # ---- Logs ----
 *.log

@@ -11,12 +11,13 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { VIDEO_EXT } from './useVideos';
-import type { Entry, MegaFolder, MegaStatus, Settings } from './types';
+import type { DriveStatus, Entry, MegaFolder, MegaResult, MegaStatus, Settings } from './types';
+import { DriveIcon } from './DriveIcon';
 
 const spring = { type: 'spring', stiffness: 380, damping: 32 } as const;
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
-/** Shared look of the two source cards (big when the list is empty, one slim row afterwards). */
+/** Shared look of the source cards (big when the list is empty, one slim row afterwards). */
 function SourceCard({ compact, dashed, highlight, icon, title, text, children }: {
   compact: boolean; dashed?: boolean; highlight?: boolean; icon: React.ReactNode; title: React.ReactNode; text: React.ReactNode; children: React.ReactNode;
 }) {
@@ -138,7 +139,7 @@ export function MegaPanel({ compact, onAdd }: { compact: boolean; onAdd: (entrie
         </SourceCard>
       )}
       <LoginDialog open={loginOpen} canRemember={account.canRemember} onOpenChange={setLoginOpen} onLoggedIn={(st) => { setAccount(st); setLoginOpen(false); setBrowserOpen(true); }} />
-      <MegaBrowser open={browserOpen} onOpenChange={setBrowserOpen} onNeedLogin={needLogin} onAdd={onAdd} />
+      <CloudBrowser api={MEGA_API} open={browserOpen} onOpenChange={setBrowserOpen} onNeedLogin={needLogin} onAdd={onAdd} />
     </>
   );
 }
@@ -211,11 +212,46 @@ function LoginDialog({ open, canRemember, onOpenChange, onLoggedIn }: {
   );
 }
 
-const LAST_FOLDER_KEY = 'vmeta.megaFolder';
+/** What the folder browser needs from a cloud drive. */
+interface CloudApi {
+  name: string;
+  icon: React.ReactNode;
+  lastFolderKey: string;
+  addressHint: string;
+  loadingText: React.ReactNode;
+  listFolder(id: string | null): Promise<MegaResult<MegaFolder>>;
+  refresh(): Promise<MegaResult<object>>;
+  address(text: string): Promise<MegaResult<{ id: string }>>;
+  videos(ids: string[]): Promise<MegaResult<{ entries: Entry[] }>>;
+}
 
-/** Folder browser of the logged-in MEGA drive. "Add" takes every video in the folder and its sub-folders. */
-function MegaBrowser({ open, onOpenChange, onNeedLogin, onAdd }: {
-  open: boolean; onOpenChange: (o: boolean) => void; onNeedLogin: () => void; onAdd: (entries: Entry[], where: string) => void;
+const MEGA_API: CloudApi = {
+  name: 'MEGA',
+  icon: <Cloud className="inline size-3.5" />,
+  lastFolderKey: 'vmeta.megaFolder',
+  addressHint: 'Or paste the folder address from the MEGA website (mega.nz/fm/…)',
+  loadingText: <>Loading your MEGA folders…<span className="text-xs">The first time after starting the app this can take a little while for a big drive. After that it is instant.</span></>,
+  listFolder: (id) => window.api.megaFolder(id),
+  refresh: () => window.api.megaRefresh(),
+  address: (text) => window.api.megaAddress(text),
+  videos: (ids) => window.api.megaVideos(ids),
+};
+
+const DRIVE_API: CloudApi = {
+  name: 'Google Drive',
+  icon: <DriveIcon className="inline size-3.5" />,
+  lastFolderKey: 'vmeta.gdriveFolder',
+  addressHint: 'Or paste the folder address from Google Drive (drive.google.com/drive/folders/…)',
+  loadingText: <>Loading your Google Drive folders…</>,
+  listFolder: (id) => window.api.gdriveFolder(id),
+  refresh: async () => ({ ok: true }),
+  address: (text) => window.api.gdriveAddress(text),
+  videos: (ids) => window.api.gdriveVideos(ids),
+};
+
+/** Folder browser of a logged-in cloud drive. "Add" takes every video in the folder and its sub-folders. */
+function CloudBrowser({ api, open, onOpenChange, onNeedLogin, onAdd }: {
+  api: CloudApi; open: boolean; onOpenChange: (o: boolean) => void; onNeedLogin: () => void; onAdd: (entries: Entry[], where: string) => void;
 }) {
   const [folder, setFolder] = useState<MegaFolder | null>(null);
   const [loading, setLoading] = useState(false);
@@ -226,24 +262,24 @@ function MegaBrowser({ open, onOpenChange, onNeedLogin, onAdd }: {
   const go = useCallback(async (id: string | null, fallbackToTop = false): Promise<void> => {
     setLoading(true); setError(null);
     try {
-      const r = await window.api.megaFolder(id);
-      if (r.ok) { setFolder(r); try { localStorage.setItem(LAST_FOLDER_KEY, r.id || ''); } catch { /* ignore */ } return; }
+      const r = await api.listFolder(id);
+      if (r.ok) { setFolder(r); try { localStorage.setItem(api.lastFolderKey, r.id || ''); } catch { /* ignore */ } return; }
       if (r.needLogin) { onNeedLogin(); return; }
       if (fallbackToTop && id) return go(null);
       setError(r.error);
     } finally { setLoading(false); }
-  }, [onNeedLogin]);
+  }, [api, onNeedLogin]);
 
   useEffect(() => {
     if (!open) return;
     let last: string | null = null;
-    try { last = localStorage.getItem(LAST_FOLDER_KEY) || null; } catch { /* ignore */ }
+    try { last = localStorage.getItem(api.lastFolderKey) || null; } catch { /* ignore */ }
     go(last, true);
-  }, [open, go]);
+  }, [open, go, api]);
 
   const refresh = async () => {
     setLoading(true); setError(null);
-    const r = await window.api.megaRefresh();
+    const r = await api.refresh();
     if (!r.ok) { setLoading(false); if (r.needLogin) onNeedLogin(); else setError(r.error); return; }
     await go(folder?.id ?? null, true);
   };
@@ -251,7 +287,7 @@ function MegaBrowser({ open, onOpenChange, onNeedLogin, onAdd }: {
   const goAddress = async () => {
     if (!address.trim()) return;
     setLoading(true); setError(null);
-    const r = await window.api.megaAddress(address.trim());
+    const r = await api.address(address.trim());
     setLoading(false);
     if (r.ok) { setAddress(''); go(r.id); } else if (r.needLogin) onNeedLogin(); else setError(r.error);
   };
@@ -259,7 +295,7 @@ function MegaBrowser({ open, onOpenChange, onNeedLogin, onAdd }: {
   const add = async (id: string, name: string) => {
     setAdding(id); setError(null);
     try {
-      const r = await window.api.megaVideos([id]);
+      const r = await api.videos([id]);
       if (!r.ok) { if (r.needLogin) onNeedLogin(); else setError(r.error); return; }
       if (!r.entries.length) { setError(`There are no videos in "${name}".`); return; }
       onAdd(r.entries, `"${name}"`);
@@ -268,19 +304,20 @@ function MegaBrowser({ open, onOpenChange, onNeedLogin, onAdd }: {
   };
 
   const here = folder?.path[folder.path.length - 1];
+  const total = folder?.videosTotal;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] flex-col gap-3 sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><FolderTree className="size-5 text-primary" /> Choose a MEGA folder</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><FolderTree className="size-5 text-primary" /> Choose a {api.name} folder</DialogTitle>
           <DialogDescription>Click a folder to open it. <b className="font-medium text-foreground">Add</b> takes every video inside, also in sub-folders, and names them by camera folder.</DialogDescription>
         </DialogHeader>
 
         {/* where we are */}
         <div className="flex min-h-9 flex-wrap items-center gap-0.5 rounded-lg bg-muted/60 px-2 py-1 text-sm">
           <button type="button" aria-label="Top" className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-background hover:text-foreground" onClick={() => go(null)} disabled={loading}>
-            <Cloud className="inline size-3.5" />
+            {api.icon}
           </button>
           {folder?.path.map((p, i) => (
             <span key={p.id} className="flex items-center gap-0.5">
@@ -299,8 +336,7 @@ function MegaBrowser({ open, onOpenChange, onNeedLogin, onAdd }: {
           {loading && !folder ? (
             <div className="flex h-56 flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground">
               <Loader2 className="size-6 animate-spin text-primary" />
-              Loading your MEGA folders…
-              <span className="text-xs">The first time after starting the app this can take a little while for a big drive. After that it is instant.</span>
+              {api.loadingText}
             </div>
           ) : (
             <AnimatePresence mode="wait" initial={false}>
@@ -310,9 +346,9 @@ function MegaBrowser({ open, onOpenChange, onNeedLogin, onAdd }: {
                     <button type="button" onClick={() => go(f.id)} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-1 py-1 text-left">
                       <Folder className="size-5 shrink-0 fill-amber-400/80 text-amber-500" />
                       <span className="truncate text-sm font-medium">{f.name}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{f.videos ? plural(f.videos, 'video') : 'no videos'}</span>
+                      {f.videos !== null && <span className="shrink-0 text-xs text-muted-foreground">{f.videos ? plural(f.videos, 'video') : 'no videos'}</span>}
                     </button>
-                    <Button variant="outline" size="sm" className="h-7" disabled={!f.videos || !!adding} onClick={() => add(f.id, f.name)}>
+                    <Button variant="outline" size="sm" className="h-7" disabled={f.videos === 0 || !!adding} onClick={() => add(f.id, f.name)}>
                       {adding === f.id ? <Loader2 className="animate-spin" /> : <FolderPlus />} Add
                     </Button>
                   </div>
@@ -331,28 +367,121 @@ function MegaBrowser({ open, onOpenChange, onNeedLogin, onAdd }: {
           {error && <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="text-sm text-destructive">{error}</motion.p>}
         </AnimatePresence>
 
-        {/* jump to a folder whose address was copied from the MEGA website */}
+        {/* jump to a folder whose address was copied from the drive's website */}
         <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); goAddress(); }}>
           <div className="relative flex-1">
             <Link2 className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Or paste the folder address from the MEGA website (mega.nz/fm/…)" className="h-8 pl-9 text-sm" spellCheck={false} disabled={loading} />
+            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={api.addressHint} className="h-8 pl-9 text-sm" spellCheck={false} disabled={loading} />
           </div>
           <Button type="submit" variant="outline" size="sm" disabled={!address.trim() || loading}>Open</Button>
         </form>
 
         <DialogFooter className="items-center sm:justify-between">
-          <span className="text-xs text-muted-foreground">{here && folder ? `“${here.name}”: ${plural(folder.videosTotal, 'video')} in total` : ''}</span>
+          <span className="text-xs text-muted-foreground">
+            {here && folder ? (total != null ? `“${here.name}”: ${plural(total, 'video')} in total` : folder.videosHere ? `“${here.name}”: ${plural(folder.videosHere, 'video')} here (sub-folders are counted when you add)` : '') : ''}
+          </span>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>Close</Button>
             {here && folder && (
-              <Button onClick={() => add(here.id, here.name)} disabled={!folder.videosTotal || !!adding || loading} className="shadow-sm shadow-primary/30">
-                {adding === here.id ? <Loader2 className="animate-spin" /> : <FolderPlus />} Add this folder ({folder.videosTotal})
+              <Button onClick={() => add(here.id, here.name)} disabled={total === 0 || !!adding || loading} className="shadow-sm shadow-primary/30">
+                {adding === here.id ? <Loader2 className="animate-spin" /> : <FolderPlus />} Add this folder{total != null ? ` (${total})` : ''}
               </Button>
             )}
           </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---- Google Drive: connect once in the web browser, then choose folders ------------------------------
+
+const NO_DRIVE: DriveStatus = { configured: true, loggedIn: false, email: null, canRemember: false, connecting: false };
+
+export function DrivePanel({ compact, onAdd }: { compact: boolean; onAdd: (entries: Entry[], where: string) => void }) {
+  const [account, setAccount] = useState<DriveStatus>(NO_DRIVE);
+  const [checking, setChecking] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [browserOpen, setBrowserOpen] = useState(false);
+
+  useEffect(() => { window.api.gdriveStatus().then(setAccount).catch(() => {}).finally(() => setChecking(false)); }, []);
+
+  const connect = async () => {
+    setError(null);
+    setAccount((a) => ({ ...a, connecting: true }));
+    const r = await window.api.gdriveLogin();
+    setAccount(r);
+    if (r.ok) setBrowserOpen(true);
+    else if (!r.canceled) setError(r.error || 'Could not connect Google Drive.');
+  };
+  const cancel = async () => setAccount(await window.api.gdriveCancel());
+  const needLogin = useCallback(() => {
+    setBrowserOpen(false);
+    setError('Your Google Drive connection has ended. Click "Connect Google Drive" again.');
+    window.api.gdriveStatus().then(setAccount).catch(() => {});
+  }, []);
+  const logout = async () => setAccount(await window.api.gdriveLogout());
+
+  if (checking) {
+    return <SourceCard compact={compact} icon={<Loader2 className="animate-spin" />} title="Google Drive" text="Checking your Google Drive connection…"><span /></SourceCard>;
+  }
+  if (!account.configured) {
+    return (
+      <SourceCard compact={compact} icon={<DriveIcon />} title="Google Drive"
+        text={compact ? 'Google Drive is not set up in this copy of the app' : 'Google Drive is not set up in this copy of the app (no Google Client ID). See the README, "Google Drive setup".'}>
+        <span />
+      </SourceCard>
+    );
+  }
+
+  return (
+    <>
+      {account.loggedIn ? (
+        <SourceCard
+          compact={compact}
+          icon={<DriveIcon />}
+          title={compact ? 'Add videos from Google Drive' : 'Choose folders from your Google Drive'}
+          text={
+            <span className={cn('inline-flex items-center gap-1.5', !compact && 'flex-wrap justify-center')}>
+              <ShieldCheck className="size-3.5 shrink-0 text-success" /> Connected as <b className="font-medium text-foreground">{account.email}</b>
+              {!compact && <span className="basis-full">Videos are <b className="font-medium text-foreground">not downloaded</b>: the app only reads the few pieces it needs.</span>}
+            </span>
+          }
+        >
+          <Button size={compact ? 'sm' : 'default'} onClick={() => setBrowserOpen(true)} className={compact ? '' : 'shadow-sm shadow-primary/30'}>
+            <FolderTree /> Choose Drive folder
+          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size={compact ? 'sm' : 'default'} onClick={logout}><LogOut /> Disconnect</Button>
+            </TooltipTrigger>
+            <TooltipContent>{account.canRemember ? 'The app remembers the connection until you disconnect.' : 'Disconnect Google Drive'}</TooltipContent>
+          </Tooltip>
+        </SourceCard>
+      ) : (
+        <SourceCard
+          compact={compact}
+          icon={account.connecting ? <Loader2 className="animate-spin" /> : <DriveIcon />}
+          title={account.connecting ? 'Finish signing in in your web browser' : 'Connect Google Drive'}
+          text={
+            <>
+              {account.connecting
+                ? 'Google\u2019s sign-in page is open in your web browser. Choose your account and allow access, then come back here.'
+                : compact ? 'Connect once, then choose folders of your drive'
+                  : 'Sign in with Google in your normal web browser (read-only access). The app remembers it, then you choose folders of your drive. Videos are not downloaded, and the app never sees your password.'}
+              {error && <span className={cn('block text-destructive', !compact && 'mt-2')}>{error}</span>}
+            </>
+          }
+        >
+          {account.connecting ? (
+            <Button variant="outline" size={compact ? 'sm' : 'default'} onClick={cancel}>Cancel</Button>
+          ) : (
+            <Button size={compact ? 'sm' : 'default'} onClick={connect} className={compact ? '' : 'shadow-sm shadow-primary/30'}><LogIn /> Connect Google Drive</Button>
+          )}
+        </SourceCard>
+      )}
+      <CloudBrowser api={DRIVE_API} open={browserOpen} onOpenChange={setBrowserOpen} onNeedLogin={needLogin} onAdd={onAdd} />
+    </>
   );
 }
 
@@ -369,7 +498,7 @@ export function NamingInfoDialog({ open, onOpenChange, settings }: { open: boole
   ];
   const steps = [
     <>Put each camera's videos in a folder named after the camera, e.g. <b>Camera 1</b> or <b>Unit-6 Camera-2</b>. Names like <b>CAM 2</b>, <b>camera_02</b> or <b>Cam2</b> also work.</>,
-    <>Add the videos: drop the folder, click <b>Choose folder</b>, or pick the folder in <b>MEGA</b>.</>,
+    <>Add the videos: drop the folder, click <b>Choose folder</b>, or pick the folder in <b>MEGA</b> or <b>Google Drive</b>.</>,
     <>The app looks at the folder the video is in, then the folders above it. The closest folder with a camera number gives the name, e.g. <b>Camera 2</b>.</>,
     <>If no folder has a camera number, the <b>default camera name</b> is used (now: <b>{def}</b>). You can change it in <b>Settings</b>.</>,
     <>In Excel, <b>video_name</b> = camera name + <b>_</b> + file name. You can still edit any name in the table before export.</>,
@@ -379,7 +508,7 @@ export function NamingInfoDialog({ open, onOpenChange, settings }: { open: boole
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Info className="size-5 text-primary" /> How the video name is saved in Excel</DialogTitle>
-          <DialogDescription>Camera name from the folder + _ + file name. Works the same on this computer and in MEGA.</DialogDescription>
+          <DialogDescription>Camera name from the folder + _ + file name. Works the same on this computer, in MEGA and in Google Drive.</DialogDescription>
         </DialogHeader>
         <ol className="grid gap-2.5 text-sm">
           {steps.map((t, i) => (

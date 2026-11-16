@@ -16,7 +16,8 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { VideoTable } from './VideoTable';
 import { useVideos } from './useVideos';
-import { DropZone, MegaPanel, NamingInfoDialog } from './Sources';
+import { DrivePanel, DropZone, MegaPanel, NamingInfoDialog } from './Sources';
+import { DriveIcon } from './DriveIcon';
 import { HistoryDialog } from './History';
 import type { Entry, Settings, UpdateState, VideoRow } from './types';
 
@@ -169,7 +170,7 @@ export default function App() {
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* storage unavailable */ } }, [settings]);
 
-  const [tab, setTab] = useState<'local' | 'mega'>(() => { try { return localStorage.getItem(TAB_KEY) === 'mega' ? 'mega' : 'local'; } catch { return 'local'; } });
+  const [tab, setTab] = useState<'local' | 'mega' | 'gdrive'>(() => { try { const t = localStorage.getItem(TAB_KEY); return t === 'mega' || t === 'gdrive' ? t : 'local'; } catch { return 'local'; } });
   useEffect(() => { try { localStorage.setItem(TAB_KEY, tab); } catch { /* storage unavailable */ } }, [tab]);
 
   const add = useCallback((entries: Entry[], where = 'the selection') => {
@@ -267,15 +268,17 @@ export default function App() {
 
       <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-6">
         <div className={cn('flex shrink-0 flex-col gap-2', !hasItems && 'min-h-[300px] flex-1')}>
-          <Tabs value={tab} onValueChange={(v) => setTab(v as 'local' | 'mega')}>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as 'local' | 'mega' | 'gdrive')}>
             <TabsList>
               <TabsTrigger value="local" className="px-3"><HardDrive /> From this computer</TabsTrigger>
               <TabsTrigger value="mega" className="px-3"><Cloud /> From MEGA</TabsTrigger>
+              <TabsTrigger value="gdrive" className="px-3"><DriveIcon /> From Google Drive</TabsTrigger>
             </TabsList>
           </Tabs>
           {tab === 'local'
             ? <DropZone compact={hasItems} dragging={dragging} onFiles={browse} onFolder={browseFolder} />
-            : <MegaPanel compact={hasItems} onAdd={add} />}
+            : tab === 'mega' ? <MegaPanel compact={hasItems} onAdd={add} />
+              : <DrivePanel compact={hasItems} onAdd={add} />}
         </div>
 
         <AnimatePresence>

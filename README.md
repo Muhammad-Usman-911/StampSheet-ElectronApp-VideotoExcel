@@ -37,6 +37,8 @@ Factory and site cameras (NVR/DVR) print a clock in the corner of every video. L
   name (`Unit-6 Camera-3` → `Camera 3`).
 - **Reads straight from MEGA.** Log in once and browse your drive. Videos are **not downloaded**: only the few
   megabytes needed to read the clock are streamed and decrypted in memory.
+- **Reads straight from Google Drive.** Connect once in your web browser (read-only access) and browse My Drive,
+  *Shared with me* and shared drives. Videos are **not downloaded** either: only the needed pieces are streamed.
 - **Excel export.** Write a new `.xlsx` file or append to an existing register. Dates and times are stored as real Excel values.
 - **History per device.** Every video read and every Excel file saved is listed in a local history. Rows can be
   re-opened and exported again. There is no account and nothing leaves the computer.
@@ -66,6 +68,9 @@ The app checks for updates automatically. When a new version is ready, a **Resta
 1. **Add videos**
    - **From this computer:** drop videos or folders anywhere on the window, or use *Choose videos* / *Choose folder*.
    - **From MEGA:** *Log in to MEGA* (once; the login is remembered), then *Choose MEGA folder* and *Add*.
+   - **From Google Drive:** *Connect Google Drive* opens Google's sign-in page in your web browser. Choose the account
+     and allow access, then come back: *Choose Drive folder* and *Add* (or paste a `drive.google.com/drive/folders/…`
+     address). The connection is remembered until you click *Disconnect*.
 2. **Check:** values can be edited in place. Orange rows need a look (the note explains why). Click the
    warning icon once a row is checked. *Needs check* filters to those rows.
 3. **Export:** *Export to new Excel* or *Append to existing Excel*.
@@ -95,7 +100,8 @@ Not treated as camera folders: `Webcam5`, `Scam 1`, `Cameras`, `Footage 2026`.
 | History | `history.jsonl` in the app data folder of this computer (`%APPDATA%\StampSheet` on Windows, `~/.config/StampSheet` on Linux) |
 | MEGA login | Only the session token, encrypted by the operating system (Windows Credential Manager / Linux keyring). The password is never stored. *Log out* deletes it. |
 | Settings | Local app storage |
-| Videos | Never uploaded. MEGA videos are streamed piece by piece and never written to disk. |
+| Google Drive connection | Only the refresh token (read-only Drive access) and the email, encrypted by the operating system like the MEGA login (`gdrive-session.bin`). The app never sees the Google password. *Disconnect* withdraws the token at Google and deletes it. |
+| Videos | Never uploaded. MEGA and Google Drive videos are streamed piece by piece and never written to disk. |
 
 ---
 
@@ -125,6 +131,29 @@ MEGA_EMAIL=… MEGA_PASSWORD=… npm run test:mega -- "https://mega.nz/fm/<folde
 
 Releases are built by GitHub Actions when a version tag is pushed (`.github/workflows/release.yml`).
 
+### Google Drive setup (once, by the developer)
+
+Google only lets an app read Drive files with its own **OAuth Client ID**. No extra npm package is needed (the app
+talks to Google with plain HTTPS calls). Without a Client ID the app still works; the Google Drive tab just says it is
+not set up.
+
+1. Open [Google Cloud Console](https://console.cloud.google.com/), create (or pick) a project.
+2. **APIs & Services → Library →** enable **Google Drive API**.
+3. **APIs & Services → OAuth consent screen:** app name *StampSheet*, user type *External*, add the scope
+   `https://www.googleapis.com/auth/drive.readonly`. While the app is in *Testing*, add the client's Google accounts
+   under **Test users** (up to 100).
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID →** application type **Desktop app**.
+   Click **Download JSON**.
+5. Save that file as **`google-oauth.json`** in the project folder (next to `package.json`). It is git-ignored and is
+   packed into the installer by `npm run dist`. Instead of the file you can set the environment variables
+   `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (useful with `npm start`).
+6. For GitHub Actions releases add the repository secrets **`GOOGLE_CLIENT_ID`** and **`GOOGLE_CLIENT_SECRET`**; the
+   workflow writes `google-oauth.json` before building.
+
+> The "client secret" of a Desktop app is not really secret (Google says so for installed apps); the sign-in is
+> protected by PKCE and a one-time local address. `drive.readonly` is a *restricted* scope: for more than 100 users,
+> or to remove Google's "unverified app" notice, the app must be verified by Google (OAuth app verification).
+
 ### Tech stack
 
 | Layer | Technology |
@@ -135,6 +164,7 @@ Releases are built by GitHub Actions when a version tag is pushed (`.github/work
 | OCR | tesseract.js 5 with bundled English data (fully offline) |
 | Excel | exceljs |
 | MEGA | megajs (login, folder list) + own streaming bridge (range reads, AES-CTR decryption) |
+| Google Drive | Google OAuth 2.0 (installed-app flow with PKCE, system browser) + Drive REST API v3 with Range requests, plain `fetch` (no extra package) |
 
 ### Project structure
 
@@ -143,15 +173,17 @@ main.js                 Electron main process: window, IPC handlers, reading que
 preload.js              Safe bridge to the UI (window.api)
 src/
   videoMeta.js          Clock reader: frame grabs, colour-independent text cleanup, OCR, voting, parsing
-  sources.js            Finds videos (files, folders, MEGA), camera name from folders, MEGA decryption
+  sources.js            Finds videos (files, folders, MEGA, Google Drive), camera name from folders, MEGA decryption
   megaAccount.js        MEGA login, remembered session, background folder list, folder browser
-  streamBridge.js       Local HTTP range server so ffmpeg can read MEGA videos without downloading
+  driveAccount.js       Google Drive sign-in (browser + PKCE), remembered token, folder browser, range reader
+  streamBridge.js       Local HTTP range server so ffmpeg can read MEGA / Drive videos without downloading
   excel.js              New / append Excel export
   history.js            Per-device history (local JSON-lines file)
   updates.js            Auto-update (electron-updater)
 ui/src/
   App.tsx               Layout: header, source tabs, table, footer
-  Sources.tsx           Drop zone, MEGA panel, login, folder browser, "How names work"
+  Sources.tsx           Drop zone, MEGA and Google Drive panels, login, shared folder browser, "How names work"
+  DriveIcon.tsx         Google Drive mark used in the tab, rows and history
   History.tsx           History window
   VideoTable.tsx        Editable, animated results table
   useVideos.ts          List state and reading
@@ -169,9 +201,10 @@ build/                  App icon (icon.svg / icon.png)
  UI (React)                          Main process                                  Tools
  drop / Choose folder ─expand-paths─▶ sources.expandLocal (walk folders)
  MEGA folder browser ──mega-videos──▶ sources.listMegaFolders
+ Drive folder browser ─gdrive-videos▶ sources.listDriveFolders
                      ◀── entries ─── { id, name, camera from folder, folderPath }
  analyse(id) per video ────────────▶ queue (2–6 in parallel, by CPU count)
-                                      MEGA ids → local streamBridge URL
+                                      MEGA / Drive ids → local streamBridge URL
                                       videoMeta.analyseVideo ─────────────────────▶ ffprobe, ffmpeg, tesseract
                      ◀──── row ───── { date, start_time, end_time, duration, warning } → history
  Export ──────────── export-excel ─▶ excel.saveRows ────────────────────────────▶ .xlsx → history
@@ -195,6 +228,15 @@ password; the account's folder list loads in the background and is cached in mem
 local address (`http://127.0.0.1:<port>/<secret>/<id>`); the bridge fetches only the requested byte ranges from MEGA in
 512 KB blocks, decrypts them in memory (AES-128-CTR allows decrypting any block on its own) and caches recent blocks.
 Typical traffic: about 6 MB per 1 GB video.
+
+**Google Drive without downloading** (`src/driveAccount.js`). *Connect* starts a one-time local web server on
+`127.0.0.1:<random port>` and opens Google's sign-in page in the default browser (OAuth 2.0 for installed apps, PKCE,
+scope `drive.readonly`). Google sends the browser back to that local address with a code, which is exchanged for an
+access token (1 hour, refreshed automatically) and a refresh token (kept encrypted). Folders are listed one at a time
+with the Drive API (My Drive, *Shared with me*, shared drives; shortcuts are followed after real folders, so a video
+keeps its real camera folder). *Add* walks all sub-folders, asking for up to 40 folders per request. Videos go through
+the same stream bridge as MEGA; pieces are fetched with HTTP `Range` requests (`files/<id>?alt=media`), no decryption
+needed. Checked against a simulated Drive with the test videos: 11 MB read of 2.1 GB, values identical to local reads.
 
 **History** (`src/history.js`). One JSON line per event (`read` with the row and source folder, `export` with the file
 and exported rows) in the app data folder. Capped at 50 000 events.

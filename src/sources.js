@@ -1,6 +1,6 @@
-// Where videos come from (this computer or a MEGA link) and which camera each one belongs to.
+// Where videos come from (this computer, MEGA or Google Drive) and which camera each one belongs to.
 //
-// Camera name rule (same for local folders and MEGA folders):
+// Camera name rule (same for local, MEGA and Google Drive folders):
 //   Look at the folders the video is in, starting with the closest one. The first folder whose name has
 //   "camera" or "cam" followed by a number (Camera 2, CAMERA_02, cam-3, Cam3 ...) gives the name "Camera <n>".
 //   If no folder matches, the default camera name from the settings is used.
@@ -114,6 +114,23 @@ async function listMegaFolders(ids) {
 
 const getMegaFile = (id) => megaFiles.get(id);
 
+// ---- Google Drive ----------------------------------------------------------------------------------
+// Same idea as MEGA (see driveAccount.js): the user connects once and picks folders; ffmpeg reads only the pieces it
+// needs through streamBridge.js. Drive files are not encrypted, so pieces are used as they come.
+const driveFiles = new Map();   // "gdrive:<id>" -> { id, name, size }
+
+/** All videos inside the chosen Google Drive folders (all sub-folders), named by camera folder like local folders. */
+async function listDriveFolders(ids) {
+  const found = await require('./driveAccount').videosIn(ids);
+  return found.map(({ file, folders }) => {
+    const id = `gdrive:${file.id}`;
+    driveFiles.set(id, file);
+    return entry(id, file.name, folders, 'gdrive', { size: file.size });
+  });
+}
+
+const getDriveFile = (id) => driveFiles.get(id);
+
 // MEGA files are encrypted with AES-128 in counter mode, so any piece can be decrypted on its own:
 // AES key = first half XOR second half of the 32-byte file key; counter starts at nonce (bytes 16..23) + block number.
 function decryptPiece(fileKey, start, data) {
@@ -177,4 +194,4 @@ function megaSource(file) {
   };
 }
 
-module.exports = { VIDEO_EXT, isVideo, cameraFromName, cameraFromFolders, foldersOfPath, expandLocal, listMegaFolders, getMegaFile, megaSource, decryptPiece, friendlyMegaError };
+module.exports = { VIDEO_EXT, isVideo, cameraFromName, cameraFromFolders, foldersOfPath, expandLocal, listMegaFolders, getMegaFile, listDriveFolders, getDriveFile, megaSource, decryptPiece, friendlyMegaError };
